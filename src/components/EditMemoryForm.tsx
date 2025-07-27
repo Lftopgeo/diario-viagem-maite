@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { X, Save, Plus, Trash2, Image, Video } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { X, Save, Plus, Trash2, Image, Video, Upload, Loader } from 'lucide-react';
 import { Memoria } from '../types';
+import { UploadService } from '../services/uploadService';
 
 interface EditMemoryFormProps {
   memoria: Memoria;
@@ -23,6 +24,11 @@ const EditMemoryForm: React.FC<EditMemoryFormProps> = ({ memoria, onSave, onCanc
   const [novaFoto, setNovaFoto] = useState('');
   const [novoVideo, setNovoVideo] = useState('');
   const [novoItem, setNovoItem] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState('');
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,6 +37,89 @@ const EditMemoryForm: React.FC<EditMemoryFormProps> = ({ memoria, onSave, onCanc
       return;
     }
     onSave(formData);
+  };
+
+  // Upload de fotos da galeria
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setUploading(true);
+    setUploadProgress('Fazendo upload das fotos...');
+
+    try {
+      const validFiles = Array.from(files).filter(file => 
+        UploadService.validateImageFile(file)
+      );
+
+      if (validFiles.length === 0) {
+        setUploading(false);
+        setUploadProgress('');
+        return;
+      }
+
+      // Redimensionar imagens antes do upload
+      const resizedFiles = await Promise.all(
+        validFiles.map(file => UploadService.resizeImage(file))
+      );
+
+      const uploadedUrls = await UploadService.uploadMultipleFiles(resizedFiles, 'fotos');
+      
+      setFormData(prev => ({
+        ...prev,
+        fotos: [...prev.fotos, ...uploadedUrls]
+      }));
+
+      setUploadProgress('Fotos enviadas com sucesso!');
+      setTimeout(() => setUploadProgress(''), 2000);
+    } catch (error) {
+      console.error('Erro no upload:', error);
+      alert('Erro ao fazer upload das fotos. Tente novamente.');
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  // Upload de vídeos da galeria
+  const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setUploading(true);
+    setUploadProgress('Fazendo upload dos vídeos...');
+
+    try {
+      const validFiles = Array.from(files).filter(file => 
+        UploadService.validateVideoFile(file)
+      );
+
+      if (validFiles.length === 0) {
+        setUploading(false);
+        setUploadProgress('');
+        return;
+      }
+
+      const uploadedUrls = await UploadService.uploadMultipleFiles(validFiles, 'videos');
+      
+      setFormData(prev => ({
+        ...prev,
+        videos: [...prev.videos, ...uploadedUrls]
+      }));
+
+      setUploadProgress('Vídeos enviados com sucesso!');
+      setTimeout(() => setUploadProgress(''), 2000);
+    } catch (error) {
+      console.error('Erro no upload:', error);
+      alert('Erro ao fazer upload dos vídeos. Tente novamente.');
+    } finally {
+      setUploading(false);
+      if (videoInputRef.current) {
+        videoInputRef.current.value = '';
+      }
+    }
   };
 
   const adicionarFoto = () => {
@@ -92,10 +181,21 @@ const EditMemoryForm: React.FC<EditMemoryFormProps> = ({ memoria, onSave, onCanc
           <button
             onClick={onCancel}
             className="p-2 hover:bg-gray-100 rounded-full"
+            disabled={uploading}
           >
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {/* Barra de progresso do upload */}
+        {uploading && (
+          <div className="px-4 py-2 bg-blue-50 border-b">
+            <div className="flex items-center gap-2">
+              <Loader className="w-4 h-4 animate-spin text-blue-500" />
+              <span className="text-sm text-blue-700">{uploadProgress}</span>
+            </div>
+          </div>
+        )}
         
         <form onSubmit={handleSubmit} className="p-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -111,6 +211,7 @@ const EditMemoryForm: React.FC<EditMemoryFormProps> = ({ memoria, onSave, onCanc
                   onChange={(e) => setFormData(prev => ({ ...prev, data: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
                   required
+                  disabled={uploading}
                 />
               </div>
 
@@ -124,6 +225,7 @@ const EditMemoryForm: React.FC<EditMemoryFormProps> = ({ memoria, onSave, onCanc
                   onChange={(e) => setFormData(prev => ({ ...prev, titulo: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
                   required
+                  disabled={uploading}
                 />
               </div>
 
@@ -137,6 +239,7 @@ const EditMemoryForm: React.FC<EditMemoryFormProps> = ({ memoria, onSave, onCanc
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
                   rows={4}
                   required
+                  disabled={uploading}
                 />
               </div>
 
@@ -149,6 +252,7 @@ const EditMemoryForm: React.FC<EditMemoryFormProps> = ({ memoria, onSave, onCanc
                   value={formData.local}
                   onChange={(e) => setFormData(prev => ({ ...prev, local: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+                  disabled={uploading}
                 />
               </div>
 
@@ -161,6 +265,7 @@ const EditMemoryForm: React.FC<EditMemoryFormProps> = ({ memoria, onSave, onCanc
                   onChange={(e) => setFormData(prev => ({ ...prev, categoria: e.target.value as any }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
                   required
+                  disabled={uploading}
                 >
                   <option value="marco">Marco</option>
                   <option value="cotidiano">Cotidiano</option>
@@ -179,20 +284,45 @@ const EditMemoryForm: React.FC<EditMemoryFormProps> = ({ memoria, onSave, onCanc
                   <Image className="w-4 h-4 inline mr-1" />
                   Fotos
                 </label>
-                <div className="space-y-2">
+                <div className="space-y-3">
+                  {/* Upload da Galeria */}
+                  <div className="flex gap-2">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={handlePhotoUpload}
+                      className="hidden"
+                      disabled={uploading}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="flex-1 px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                      disabled={uploading}
+                    >
+                      <Upload className="w-4 h-4" />
+                      Galeria
+                    </button>
+                  </div>
+
+                  {/* URL Manual */}
                   <div className="flex gap-2">
                     <input
                       type="url"
                       value={novaFoto}
                       onChange={(e) => setNovaFoto(e.target.value)}
                       className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
-                      placeholder="URL da foto"
+                      placeholder="Ou cole URL da foto"
                       onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), adicionarFoto())}
+                      disabled={uploading}
                     />
                     <button
                       type="button"
                       onClick={adicionarFoto}
-                      className="px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                      className="px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50"
+                      disabled={uploading}
                     >
                       <Plus className="w-4 h-4" />
                     </button>
@@ -214,7 +344,8 @@ const EditMemoryForm: React.FC<EditMemoryFormProps> = ({ memoria, onSave, onCanc
                           <button
                             type="button"
                             onClick={() => removerFoto(index)}
-                            className="p-1 text-red-500 hover:bg-red-50 rounded"
+                            className="p-1 text-red-500 hover:bg-red-50 rounded disabled:opacity-50"
+                            disabled={uploading}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -231,20 +362,45 @@ const EditMemoryForm: React.FC<EditMemoryFormProps> = ({ memoria, onSave, onCanc
                   <Video className="w-4 h-4 inline mr-1" />
                   Vídeos
                 </label>
-                <div className="space-y-2">
+                <div className="space-y-3">
+                  {/* Upload da Galeria */}
+                  <div className="flex gap-2">
+                    <input
+                      ref={videoInputRef}
+                      type="file"
+                      accept="video/*"
+                      multiple
+                      onChange={handleVideoUpload}
+                      className="hidden"
+                      disabled={uploading}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => videoInputRef.current?.click()}
+                      className="flex-1 px-3 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                      disabled={uploading}
+                    >
+                      <Upload className="w-4 h-4" />
+                      Galeria
+                    </button>
+                  </div>
+
+                  {/* URL Manual */}
                   <div className="flex gap-2">
                     <input
                       type="url"
                       value={novoVideo}
                       onChange={(e) => setNovoVideo(e.target.value)}
                       className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
-                      placeholder="URL do vídeo"
+                      placeholder="Ou cole URL do vídeo"
                       onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), adicionarVideo())}
+                      disabled={uploading}
                     />
                     <button
                       type="button"
                       onClick={adicionarVideo}
-                      className="px-3 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors"
+                      className="px-3 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors disabled:opacity-50"
+                      disabled={uploading}
                     >
                       <Plus className="w-4 h-4" />
                     </button>
@@ -259,7 +415,8 @@ const EditMemoryForm: React.FC<EditMemoryFormProps> = ({ memoria, onSave, onCanc
                           <button
                             type="button"
                             onClick={() => removerVideo(index)}
-                            className="p-1 text-red-500 hover:bg-red-50 rounded"
+                            className="p-1 text-red-500 hover:bg-red-50 rounded disabled:opacity-50"
+                            disabled={uploading}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -284,11 +441,13 @@ const EditMemoryForm: React.FC<EditMemoryFormProps> = ({ memoria, onSave, onCanc
                       className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
                       placeholder="Ex: Ursinho de pelúcia"
                       onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), adicionarItem())}
+                      disabled={uploading}
                     />
                     <button
                       type="button"
                       onClick={adicionarItem}
-                      className="px-3 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
+                      className="px-3 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50"
+                      disabled={uploading}
                     >
                       <Plus className="w-4 h-4" />
                     </button>
@@ -302,7 +461,8 @@ const EditMemoryForm: React.FC<EditMemoryFormProps> = ({ memoria, onSave, onCanc
                           <button
                             type="button"
                             onClick={() => removerItem(index)}
-                            className="p-0.5 text-green-600 hover:text-green-800"
+                            className="p-0.5 text-green-600 hover:text-green-800 disabled:opacity-50"
+                            disabled={uploading}
                           >
                             <X className="w-3 h-3" />
                           </button>
@@ -320,16 +480,27 @@ const EditMemoryForm: React.FC<EditMemoryFormProps> = ({ memoria, onSave, onCanc
             <button
               type="button"
               onClick={onCancel}
-              className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+              className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+              disabled={uploading}
             >
               Cancelar
             </button>
             <button
               type="submit"
-              className="flex-1 px-4 py-2 bg-pink-500 text-white rounded-lg hover:bg-pink-600 transition-colors flex items-center justify-center gap-2"
+              className="flex-1 px-4 py-2 bg-pink-500 text-white rounded-lg hover:bg-pink-600 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+              disabled={uploading}
             >
-              <Save className="w-4 h-4" />
-              Salvar Alterações
+              {uploading ? (
+                <>
+                  <Loader className="w-4 h-4 animate-spin" />
+                  Aguarde...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  Salvar Alterações
+                </>
+              )}
             </button>
           </div>
         </form>
